@@ -18,6 +18,7 @@ app.use(cors({
 }));
 app.use(express.json());
 app.use(cookieParser());
+app.use(express.static(path.join(__dirname, 'build')));
 
 app.post('/login', async (req, res) => {
   const { username, password } = req.body;
@@ -141,8 +142,8 @@ app.post('/updateAdminPermission', authenticateToken, async (req, res) => {
   }
 });
 
-app.get('/',async (req, res) => {
- res.send('kaka')
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'build', 'index.html'));
 });
 
 app.listen(port, () => {
