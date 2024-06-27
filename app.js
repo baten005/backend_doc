@@ -11,7 +11,7 @@ const secretKey = 'your_secret_key';
 
 
 app.use(cors({
-  origin: ['https://consultancy-admin-1.onrender.com','http://localhost:3000', 'https://clever-pavlova-b60702.netlify.app/'], 
+  origin: ['https://consultancy-admin-1.onrender.com','http://localhost:3000', 'https://clever-pavlova-b60702.netlify.app' ,'https://calenderkaka.000webhostapp.com'], 
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], 
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true 
