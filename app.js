@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const cookieParser = require('cookie-parser');
 const pool = require('./db/db'); 
 const path = require('path');
+const otp=require('./routes/user');
 
 const app = express();
 const port = 3003;
@@ -11,13 +12,14 @@ const secretKey = 'your_secret_key';
 
 
 app.use(cors({
-  origin: ['https://consultancy-admin-1.onrender.com','http://localhost:3000', 'https://clever-pavlova-b60702.netlify.app' ,'https://calenderkaka.000webhostapp.com'], 
+  origin: ['https://consultancy-admin-1.onrender.com','http://localhost:3000','https://calenderkaka.000webhostapp.com', 'http://93.127.166.229:81', 'http://93.127.166.229:82'], 
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], 
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true 
 }));
 app.use(express.json());
 app.use(cookieParser());
+app.use(otp);
 
 app.post('/login', async (req, res) => {
   const { username, password } = req.body;
@@ -37,7 +39,7 @@ app.post('/login', async (req, res) => {
     }
 
     const token = jwt.sign({ id: user.id }, secretKey, { expiresIn: '30m' });
-    res.cookie('token', token, { httpOnly: true, sameSite: 'none', secure: true });
+    res.cookie('token', token, { httpOnly: true, sameSite: 'lax', secure: false });
 
     res.status(200).json({ message: 'Login successful' });
   } catch (err) {
@@ -47,13 +49,13 @@ app.post('/login', async (req, res) => {
 });
 
 app.post('/logout', (req, res) => {
-  res.clearCookie('token', { httpOnly: true, sameSite: 'none', secure: true });
+  res.clearCookie('token', { httpOnly: true, sameSite: 'lax', secure: false });
   res.status(200).json({ message: 'Logout successful' });
 });
 
 const authenticateToken = (req, res, next) => {
   const token = req.cookies.token;
-  console.log(token)
+  console.log('token: ',token)
 
   if (!token) {
     return res.status(401).json({ message: 'Access denied' });
@@ -142,7 +144,15 @@ app.post('/updateAdminPermission', authenticateToken, async (req, res) => {
 });
 
 app.get('/',async (req, res) => {
- res.send('kaka')
+  try {
+    const result = await pool.query(`
+      SELECT * FROM public.buyers
+    `);
+    res.status(200).json(result.rows);
+  } catch (err) {
+    console.error('Error fetching admins:', err.stack);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 app.listen(port, () => {
