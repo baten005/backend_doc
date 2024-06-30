@@ -34,7 +34,7 @@ app.post('/login', async (req, res) => {
       return res.status(401).json({ message: 'Invalid username or password' });
     }
 
-    const token = jwt.sign({ id: user.id }, secretKey, { expiresIn: '30m' });
+    const token = jwt.sign({ id: user.id }, secretKey, { expiresIn: '30d' });
     res.cookie('token', token, { httpOnly: true, sameSite: 'none', secure: true });
 
     res.status(200).json({ message: 'Login successful' });
