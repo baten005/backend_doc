@@ -2,20 +2,22 @@ const express = require('express');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const cookieParser = require('cookie-parser');
-const pool = require('./db/db'); 
+const pool = require('./db/db');
+const otp=require('./routes/user'); 
 const path = require('path');
 const app = express();
 const port = 3003;
 const secretKey = 'your_secret_key'; 
 
 app.use(cors({
-  origin: ['https://consultancy-admin-1.onrender.com','http://localhost:3000','http://localhost:9000', 'https://clever-pavlova-b60702.netlify.app' ,'https://calenderkaka.000webhostapp.com'], 
+  origin: ['https://consultancy-admin-1.onrender.com','http://localhost:3000', 'http://93.127.166.229:81', 'http://93.127.166.229:82','http://hurairaconsultancy.com','http://admin.hurairaconsultancy.com'], 
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], 
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true 
 }));
 app.use(express.json());
 app.use(cookieParser());
+app.use(otp);
 
 app.post('/login', async (req, res) => {
   const { username, password } = req.body;
@@ -35,7 +37,7 @@ app.post('/login', async (req, res) => {
     }
 
     const token = jwt.sign({ id: user.id }, secretKey, { expiresIn: '30d' });
-    res.cookie('token', token, { httpOnly: true, sameSite: 'none', secure: true });
+    res.cookie('token', token, { httpOnly: true, sameSite: 'lax', secure: false });
 
     res.status(200).json({ message: 'Login successful' });
   } catch (err) {
@@ -45,7 +47,7 @@ app.post('/login', async (req, res) => {
 });
 
 app.post('/logout', (req, res) => {
-  res.clearCookie('token', { httpOnly: true, sameSite: 'none', secure: true });
+  res.clearCookie('token', { httpOnly: true, sameSite: 'lax', secure: false });
   res.status(200).json({ message: 'Logout successful' });
 });
 
@@ -81,30 +83,36 @@ app.get('/dashboard', authenticateToken, async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
+
 app.post('/addAdmin', authenticateToken, async (req, res) => {
   const { admin, password } = req.body;
 
   try {
+    // Update the sequence for the admin_id_seq
     await pool.query('SELECT setval(\'admin_id_seq\', (SELECT MAX(id) FROM admin))');
 
+    // Insert into admin and return the id
     const result = await pool.query(
       'INSERT INTO public.admin(username, password) VALUES ($1, $2) RETURNING id',
       [admin, password]
     );
-   const id=await pool.query('SELECT id From public.admin where username = $1 ',[admin]);
-   console.log(id.rows[0].id)
-    const result1 = await pool.query(
-      'INSERT INTO public.admin_permission(admin_id, dashboard, appointment, payment, "package", promotion, permission)VALUES ($1, $2, $3, $4, $5, $6, $7)',
-      [id.rows[0].id, true,false,false,false,false,false]
+
+    const adminId = result.rows[0].id;
+
+    // Insert into admin_permission using the returned id
+    await pool.query(
+      'INSERT INTO public.admin_permission(admin_id, dashboard, appointment, payment, "package", promotion, permission) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+      [adminId, true, false, false, false, false, false]
     );
 
-    res.status(200).json(result.rows[0]);
+    res.status(200).json({ id: adminId });
   } catch (err) {
     console.error('Error inserting admin:', err.stack);
     res.status(500).json({ error: 'Internal server error' });
   }
-  console.log(admin, password);
 });
+
 
 app.get('/getAdmins', authenticateToken, async (req, res) => {
   try {
@@ -139,6 +147,7 @@ app.post('/updateAdminPermission', authenticateToken, async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
 
 //--------------------------package--------------------
 app.get('/package', authenticateToken, async (req, res) => {
