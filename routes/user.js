@@ -47,7 +47,14 @@ router.post('/verify-otp', async (req, res) => {
     
     if (userOtp === otp) {
       const token = generateToken(phoneNumber);
-      res.cookie('token', token, { httpOnly: true, sameSite: 'lax', secure: false, maxAge: 1800000 });
+      //res.cookie('token', token, { httpOnly: true, sameSite: 'lax', secure: false, maxAge: 1800000 });
+      res.cookie('token', token, { 
+        domain: 'hurairaconsultancy.com',
+        path: '/',
+        httpOnly: true,
+        secure: false, // Set to true if using HTTPS
+        sameSite: 'Lax' // or 'None' if cross-site cookies are needed
+      });
       res.status(200).json({ token });
     } else {
       res.status(400).send('Invalid OTP');
