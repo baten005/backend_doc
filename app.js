@@ -4,13 +4,25 @@ const jwt = require('jsonwebtoken');
 const cookieParser = require('cookie-parser');
 const pool = require('./db/db');
 const otp=require('./routes/user'); 
+const payment=require('./routes/payment');
 const path = require('path');
+const fs = require('fs');
 const app = express();
 const port = 3003;
 const secretKey = 'your_secret_key'; 
+const https = require('https');
+const privateKey = fs.readFileSync('/etc/letsencrypt/live/backend.hurairaconsultancy.com/privkey.pem', 'utf8');
+const certificate = fs.readFileSync('/etc/letsencrypt/live/backend.hurairaconsultancy.com/cert.pem', 'utf8');
+const ca = fs.readFileSync('/etc/letsencrypt/live/backend.hurairaconsultancy.com/chain.pem', 'utf8');
+
+const credentials = { key: privateKey, cert: certificate, ca: ca };
 
 app.use(cors({
-  origin: ['https://consultancy-admin-1.onrender.com','http://localhost:3000', 'http://93.127.166.229:81', 'http://93.127.166.229:82','http://hurairaconsultancy.com','http://admin.hurairaconsultancy.com'], 
+  origin: ['https://consultancy-admin-1.onrender.com','http://localhost:3000', 'http://93.127.166.229:81', 'http://93.127.166.229:82','https://www.hurairaconsultancy.com','http://admin.hurairaconsultancy.com'
+    ,'https://hurairaconsultancy.com','https://admin.hurairaconsultancy.com'
+    ,'https://backend.hurairaconsultancy.com/login'
+    ,'https://backend.hurairaconsultancy.com/dashboard'
+  ], 
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], 
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true 
@@ -18,6 +30,7 @@ app.use(cors({
 app.use(express.json());
 app.use(cookieParser());
 app.use(otp);
+app.use(payment);
 
 app.post('/login', async (req, res) => {
   const { username, password } = req.body;
@@ -36,8 +49,8 @@ app.post('/login', async (req, res) => {
       return res.status(401).json({ message: 'Invalid username or password' });
     }
 
-    const token = jwt.sign({ id: user.id }, secretKey, { expiresIn: '30d' });
-    res.cookie('token', token, { httpOnly: true, sameSite: 'lax', secure: false });
+    const token1 = jwt.sign({ id: user.id }, secretKey, { expiresIn: '30d' });
+    res.cookie('token1', token1, { httpOnly: true, sameSite: 'none', secure: true });
 
     res.status(200).json({ message: 'Login successful' });
   } catch (err) {
@@ -47,23 +60,23 @@ app.post('/login', async (req, res) => {
 });
 
 app.post('/logout', (req, res) => {
-  res.clearCookie('token', { httpOnly: true, sameSite: 'lax', secure: false });
+  res.clearCookie('token1', { httpOnly: true, sameSite: 'none', secure: true });
   res.status(200).json({ message: 'Logout successful' });
 });
 
 const authenticateToken = (req, res, next) => {
-  const token = req.cookies.token;
-  console.log(token)
+  const token1 = req.cookies.token1;
+  console.log(token1)
 
-  if (!token) {
+  if (!token1) {
     return res.status(401).json({ message: 'Access denied' });
   }
 
-  jwt.verify(token, secretKey, (err, decoded) => {
+  jwt.verify(token1, secretKey, (err, decoded) => {
     if (err) {
       console.log('Token verification error:', err.message);
-      res.clearCookie('token', { httpOnly: true, sameSite: 'none', secure: true });
-      return res.status(403).json({ message: 'Invalid or expired token' });
+      res.clearCookie('token1', { httpOnly: true, sameSite: 'none', secure: true });
+      return res.status(403).json({ message: 'Invalid or expired token1' });
     }
 
     req.userId = decoded.id;
@@ -328,6 +341,6 @@ app.get('/',async (req, res) => {
  res.send('kaka')
 });
 
-app.listen(port, () => {
+https.createServer(credentials, app).listen(port, () => {
   console.log(`Server running on port ${port}`);
 });

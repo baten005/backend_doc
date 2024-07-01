@@ -26,7 +26,7 @@ router.post('/otp', async (req, res) => {
 
     console.log(`OTP for ${phoneNumber}: ${otp}`);
 
-    res.status(200).send('OTP sent successfully');
+    res.status(200).json(otp)
   } catch (err) {
     console.error(err);
     res.status(500).send('Error generating OTP');
@@ -47,14 +47,8 @@ router.post('/verify-otp', async (req, res) => {
     
     if (userOtp === otp) {
       const token = generateToken(phoneNumber);
-      //res.cookie('token', token, { httpOnly: true, sameSite: 'lax', secure: false, maxAge: 1800000 });
-      res.cookie('token', token, { 
-        domain: 'hurairaconsultancy.com',
-        path: '/',
-        httpOnly: true,
-        secure: false, // Set to true if using HTTPS
-        sameSite: 'Lax' // or 'None' if cross-site cookies are needed
-      });
+      res.cookie('token', token, { httpOnly: true, sameSite: 'none', secure: true, maxAge: 1800000 });
+      
       res.status(200).json({ token });
     } else {
       res.status(400).send('Invalid OTP');
@@ -114,7 +108,7 @@ const verifyToken = (req, res, next) => {
       }
   });
 
-  router.post('/payment', verifyToken, async (req, res) => {
+  router.post('/payment1', verifyToken, async (req, res) => {
     res.json('https://www.youtube.com/')
   });
 
