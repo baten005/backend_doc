@@ -5,6 +5,7 @@ const cookieParser = require('cookie-parser');
 const pool = require('./db/db');
 const otp=require('./routes/user'); 
 const path = require('path');
+const { error } = require('console');
 const app = express();
 const port = 3003;
 const secretKey = 'your_secret_key'; 
@@ -148,6 +149,133 @@ app.post('/updateAdminPermission', authenticateToken, async (req, res) => {
   }
 });
 
+// ------------Dashboard-------------------
+
+app.get('/timeslotsdashboard', authenticateToken, async (req, res) => {
+  try {
+      const query = `
+          SELECT 
+              ts.slot_id, 
+              ts.time_slot, 
+              a.appointment_id, 
+              a.appoint_type, 
+              a.appoint_date, 
+              a.user_fullname, 
+              a.user_phonenum,
+              p.name AS package_name, 
+              p.price
+          FROM 
+              time_slot ts
+          LEFT JOIN 
+              appointment a ON ts.slot_id = a.slot_id
+          LEFT JOIN 
+              package p ON a.package_id = p.package_id
+          ORDER BY 
+              ts.slot_id, a.appoint_date;
+      `;
+      const result = await pool.query(query);
+
+
+      const timeSlots = [];
+      let currentSlot = null;
+
+      result.rows.forEach((row) => {
+          if (!currentSlot || currentSlot.slot_id !== row.slot_id) {
+              currentSlot = {
+                  slot_id: row.slot_id,
+                  time_slot: row.time_slot,
+                  appointments: [],
+              };
+              timeSlots.push(currentSlot);
+          }
+          if (row.appointment_id) {
+              currentSlot.appointments.push({
+                  appointment_id: row.appointment_id,
+                  appoint_type: row.appoint_type,
+                  appoint_date: row.appoint_date,
+                  user_fullname: row.user_fullname,
+                  user_phonenum: row.user_phonenum,
+                  package_name: row.package_name,
+                  price: row.price,
+                  time_slot: row.time_slot, 
+              });
+          }
+      });
+
+      res.json(timeSlots);
+  } catch (error) {
+      console.error('Error fetching data:', error);
+      res.status(500).send('Server error');
+  }
+});
+
+// Fetch appointments for today
+app.get('/todayappointments', authenticateToken, async (req, res) => {
+  try {
+      const today = new Date();
+      const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+      const query = `
+          SELECT * FROM appointment
+          WHERE appoint_date >= $1 AND appoint_date < $2
+      `;
+      const { rows } = await pool.query(query, [startOfDay, endOfDay]);
+      res.json(rows);
+  } catch (error) {
+      console.error('Error fetching today\'s appointments:', error);
+      res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Fetch monthly statistics
+app.get('/monthlystats', authenticateToken, async (req, res) => {
+  try {
+      const today = new Date();
+      const thisMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+      const thisMonthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+      const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+      const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 1);
+console.log(thisMonthStart);
+      const query = `
+          SELECT
+              COUNT(DISTINCT user_phonenum) AS totalUsers,
+              (SELECT COUNT(DISTINCT user_phonenum) FROM appointment WHERE appoint_date >= $1 AND appoint_date < $2) AS lastMonthUsers,
+              (SELECT COUNT(*) FROM appointment WHERE appoint_date >= $3 AND appoint_date < $4) AS thisMonthReservations,
+              (SELECT COUNT(*) FROM appointment WHERE appoint_date >= $1 AND appoint_date < $2) AS lastMonthReservations
+          FROM appointment;
+      `;
+
+      const { rows } = await pool.query(query, [
+        lastMonthStart,
+        lastMonthEnd,
+        thisMonthStart,
+        thisMonthEnd
+      ]);
+
+      res.json(rows[0]);
+  } catch (error) {
+      console.error('Error fetching monthly statistics:', error);
+      res.status(500).json({ error: 'Server error' });
+  }
+});
+
+
+app.delete('/cancelappointment/:id', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const result = await pool.query('DELETE FROM appointment WHERE appointment_id = $1', [id]);
+    if (result.rowCount > 0) {
+      res.status(200).json({ message: 'Appointment cancelled successfully' });
+    } else {
+      res.status(404).json({ message: 'Appointment not found' });
+    }
+  } catch (error) {
+    console.error('Error cancelling appointment:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+
 
 //--------------------------package--------------------
 app.get('/package', authenticateToken, async (req, res) => {
@@ -185,7 +313,7 @@ app.delete('/package/:id',authenticateToken, async (req, res) => {
   }
 });
 
-/////////----------------
+
 
 //------------------------appointment------------------
 
