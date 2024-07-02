@@ -5,20 +5,27 @@ const cookieParser = require('cookie-parser');
 const pool = require('./db/db');
 const otp=require('./routes/user'); 
 const payment=require('./routes/payment');
+const blockScheduleRouter = require('./routes/blockSchedule');
 const path = require('path');
 const fs = require('fs');
+const { error } = require('console');
 const app = express();
 const port = 3003;
 const secretKey = 'your_secret_key'; 
 const https = require('https');
-const privateKey = fs.readFileSync('/etc/letsencrypt/live/backend.hurairaconsultancy.com/privkey.pem', 'utf8');
-const certificate = fs.readFileSync('/etc/letsencrypt/live/backend.hurairaconsultancy.com/cert.pem', 'utf8');
-const ca = fs.readFileSync('/etc/letsencrypt/live/backend.hurairaconsultancy.com/chain.pem', 'utf8');
+console.log(__dirname)
+/*const privateKeyPath = path.join(__dirname, 'backend.hurairaconsultancy.com', 'privkey.pem');
+const certificatePath = path.join(__dirname, 'backend.hurairaconsultancy.com', 'cert.pem');
+const caPath = path.join(__dirname, 'backend.hurairaconsultancy.com', 'chain.pem');
 
-const credentials = { key: privateKey, cert: certificate, ca: ca };
+const privateKey = fs.readFileSync(privateKeyPath, 'utf8');
+const certificate = fs.readFileSync(certificatePath, 'utf8');
+const ca = fs.readFileSync(caPath, 'utf8');
+
+const credentials = { key: privateKey, cert: certificate, ca: ca };*/
 
 app.use(cors({
-  origin: ['https://consultancy-admin-1.onrender.com','http://localhost:3000', 'http://93.127.166.229:81', 'http://93.127.166.229:82','https://www.hurairaconsultancy.com','http://admin.hurairaconsultancy.com'
+  origin: ['https://consultancy-admin-1.onrender.com','http://localhost:3000','http://localhost:3001', 'http://93.127.166.229:81', 'http://93.127.166.229:82','https://www.hurairaconsultancy.com','http://admin.hurairaconsultancy.com'
     ,'https://hurairaconsultancy.com','https://admin.hurairaconsultancy.com'
     ,'https://backend.hurairaconsultancy.com/login'
     ,'https://backend.hurairaconsultancy.com/dashboard'
@@ -31,6 +38,7 @@ app.use(express.json());
 app.use(cookieParser());
 app.use(otp);
 app.use(payment);
+app.use(blockScheduleRouter)
 
 app.post('/login', async (req, res) => {
   const { username, password } = req.body;
@@ -161,6 +169,133 @@ app.post('/updateAdminPermission', authenticateToken, async (req, res) => {
   }
 });
 
+// ------------Dashboard-------------------
+
+app.get('/timeslotsdashboard', authenticateToken, async (req, res) => {
+  try {
+      const query = `
+          SELECT 
+              ts.slot_id, 
+              ts.time_slot, 
+              a.appointment_id, 
+              a.appoint_type, 
+              a.appoint_date, 
+              a.user_fullname, 
+              a.user_phonenum,
+              p.name AS package_name, 
+              p.price
+          FROM 
+              time_slot ts
+          LEFT JOIN 
+              appointment a ON ts.slot_id = a.slot_id
+          LEFT JOIN 
+              package p ON a.package_id = p.package_id
+          ORDER BY 
+              ts.slot_id, a.appoint_date;
+      `;
+      const result = await pool.query(query);
+
+
+      const timeSlots = [];
+      let currentSlot = null;
+
+      result.rows.forEach((row) => {
+          if (!currentSlot || currentSlot.slot_id !== row.slot_id) {
+              currentSlot = {
+                  slot_id: row.slot_id,
+                  time_slot: row.time_slot,
+                  appointments: [],
+              };
+              timeSlots.push(currentSlot);
+          }
+          if (row.appointment_id) {
+              currentSlot.appointments.push({
+                  appointment_id: row.appointment_id,
+                  appoint_type: row.appoint_type,
+                  appoint_date: row.appoint_date,
+                  user_fullname: row.user_fullname,
+                  user_phonenum: row.user_phonenum,
+                  package_name: row.package_name,
+                  price: row.price,
+                  time_slot: row.time_slot, 
+              });
+          }
+      });
+
+      res.json(timeSlots);
+  } catch (error) {
+      console.error('Error fetching data:', error);
+      res.status(500).send('Server error');
+  }
+});
+
+// Fetch appointments for today
+app.get('/todayappointments', authenticateToken, async (req, res) => {
+  try {
+      const today = new Date();
+      const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+      const query = `
+          SELECT * FROM appointment
+          WHERE appoint_date >= $1 AND appoint_date < $2
+      `;
+      const { rows } = await pool.query(query, [startOfDay, endOfDay]);
+      res.json(rows);
+  } catch (error) {
+      console.error('Error fetching today\'s appointments:', error);
+      res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Fetch monthly statistics
+app.get('/monthlystats', authenticateToken, async (req, res) => {
+  try {
+      const today = new Date();
+      const thisMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+      const thisMonthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+      const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+      const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 1);
+console.log(thisMonthStart);
+      const query = `
+          SELECT
+              COUNT(DISTINCT user_phonenum) AS totalUsers,
+              (SELECT COUNT(DISTINCT user_phonenum) FROM appointment WHERE appoint_date >= $1 AND appoint_date < $2) AS lastMonthUsers,
+              (SELECT COUNT(*) FROM appointment WHERE appoint_date >= $3 AND appoint_date < $4) AS thisMonthReservations,
+              (SELECT COUNT(*) FROM appointment WHERE appoint_date >= $1 AND appoint_date < $2) AS lastMonthReservations
+          FROM appointment;
+      `;
+
+      const { rows } = await pool.query(query, [
+        lastMonthStart,
+        lastMonthEnd,
+        thisMonthStart,
+        thisMonthEnd
+      ]);
+
+      res.json(rows[0]);
+  } catch (error) {
+      console.error('Error fetching monthly statistics:', error);
+      res.status(500).json({ error: 'Server error' });
+  }
+});
+
+
+app.delete('/cancelappointment/:id', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const result = await pool.query('DELETE FROM appointment WHERE appointment_id = $1', [id]);
+    if (result.rowCount > 0) {
+      res.status(200).json({ message: 'Appointment cancelled successfully' });
+    } else {
+      res.status(404).json({ message: 'Appointment not found' });
+    }
+  } catch (error) {
+    console.error('Error cancelling appointment:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+
 
 //--------------------------package--------------------
 app.get('/package', authenticateToken, async (req, res) => {
@@ -198,7 +333,7 @@ app.delete('/package/:id',authenticateToken, async (req, res) => {
   }
 });
 
-/////////----------------
+
 
 //------------------------appointment------------------
 
@@ -209,13 +344,26 @@ app.get('/timeslots', authenticateToken, async (req, res) => {
   }
 
   try {
-      const result = await pool.query(
-          `SELECT ts.slot_id, ts.time_slot
-           FROM time_slot ts
-           LEFT JOIN appointment a ON ts.slot_id = a.slot_id AND a.appoint_date = $1
-           WHERE a.slot_id IS NULL`,
-          [date]
-      );
+    const result = await pool.query(
+      `SELECT ts.slot_id, ts.time_slot
+       FROM time_slot ts
+       LEFT JOIN appointment a ON ts.slot_id = a.slot_id AND a.appoint_date = $1
+       LEFT JOIN blocked_schedules bs ON bs.schedule_date = $1
+       WHERE a.slot_id IS NULL
+         AND (bs IS NULL OR (
+              (ts.slot_id = 1 AND bs.time_slot1 = '0') OR
+              (ts.slot_id = 2 AND bs.time_slot2 = '0') OR
+              (ts.slot_id = 3 AND bs.time_slot3 = '0') OR
+              (ts.slot_id = 4 AND bs.time_slot4 = '0') OR
+              (ts.slot_id = 5 AND bs.time_slot5 = '0') OR
+              (ts.slot_id = 6 AND bs.time_slot6 = '0') OR
+              (ts.slot_id = 7 AND bs.time_slot7 = '0') OR
+              (ts.slot_id = 8 AND bs.time_slot8 = '0') OR
+              (ts.slot_id = 9 AND bs.time_slot9 = '0')
+          ))`,
+      [date]
+  );
+  
       res.json(result.rows);
   } catch (error) {
       console.error('Error fetching time slots:', error);
@@ -335,12 +483,31 @@ app.post('/changepassword', authenticateToken, async (req, res) => {
     res.status(500).json({ error: 'Internal server error.' });
   }
 });
+app.post('/updateappointment', authenticateToken, async (req, res) => {
+  const { date,timeSlot } = req.body;
+  const a_id = req.query.appoinment_id;
+  console.log(date,timeSlot,a_id)
+
+  try {
+    const result = await pool.query('UPDATE appointment SET appoint_date = $1,slot_id=$2  WHERE appointment_id = $3', [date,timeSlot,a_id]);
+
+    res.status(200).json('updated');
+
+  } catch (error) {
+    console.error('Error changing password:', error);
+    res.status(500).json({ error: 'Internal server error.' });
+  }
+});
 
 
 app.get('/',async (req, res) => {
  res.send('kaka')
 });
 
-https.createServer(credentials, app).listen(port, () => {
+app.listen(port, () => {
   console.log(`Server running on port ${port}`);
 });
+/*https.createServer(credentials, app).listen(port, () => {
+  console.log(`Server running on port ${port}`);
+});
+*/

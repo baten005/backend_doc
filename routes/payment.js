@@ -82,34 +82,28 @@ router.get('/payment', verifyToken, (req, res) => {
 
 router.post("/success", async function (req, res) {
     const formData = req.query.data ? JSON.parse(decodeURIComponent(req.query.data)) : null;
-    const phoneNumber = req.query.pno;
+    const phoneNumber = '+'+req.query.pno;
+    
 
     if (!formData || !phoneNumber) {
         return res.status(400).send('Missing data');
     }
 
     const { fullName, selectedTimeSlot, selectedAppointmentType, selectedDate, counsellingType } = formData;
-
+    console.log('dddddddddddddd',fullName, selectedTimeSlot, selectedAppointmentType, selectedDate, counsellingType,phoneNumber.replace(' ',''))
     try {
-        const client = await pool.connect();
-        await client.query('BEGIN');
-        
-        const insertQuery = `
-            INSERT INTO appointments (full_name, time_slot, appointment_type, appointment_date, counselling_type, phone_number)
-            VALUES ($1, $2, $3, $4, $5, $6)
-        `;
-        const values = [fullName, selectedTimeSlot, selectedAppointmentType, selectedDate, counsellingType, phoneNumber];
-
-        await client.query(insertQuery, values);
-        await client.query('COMMIT');
-        client.release();
-
-        console.log('Data successfully inserted into the database');
+        const result = await pool.query(
+            `INSERT INTO appointment (package_id, appoint_type, appoint_date, user_fullname, user_phonenum, slot_id)
+            VALUES ($1, $2, $3, $4, $5, $6)`,
+            [parseInt(counsellingType), selectedAppointmentType, selectedDate, fullName, phoneNumber.replace(' ',''), selectedTimeSlot] 
+        );
         res.redirect('https://www.hurairaconsultancy.com/booking');
     } catch (error) {
-        console.error('Error inserting data into the database', error);
-        res.status(500).send('Internal Server Error');
+        console.error('Error creating appointment:', error);
+        res.status(500).send('Server error');
     }
+   
+    
 });
 
 router.post("/fail", async function (req, res) {

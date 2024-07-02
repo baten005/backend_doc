@@ -16,15 +16,15 @@ const generateToken = (phoneNumber) => {
 
 router.post('/otp', async (req, res) => {
   try {
-    const { phoneNumber } = req.body;
+    const { phoneNumber1 } = req.body;
     const otp = generateOtp();
 
     await pool.query(
       'INSERT INTO users (email, password, username) VALUES ($1, $2, $3) ON CONFLICT (email) DO UPDATE SET password = $2',
-      [phoneNumber, otp, 'client']
+      [phoneNumber1, otp, 'client']
     );
 
-    console.log(`OTP for ${phoneNumber}: ${otp}`);
+    console.log(`OTP for ${phoneNumber1}: ${otp}`);
 
     res.status(200).json(otp)
   } catch (err) {
@@ -36,9 +36,9 @@ router.post('/otp', async (req, res) => {
 router.post('/verify-otp', async (req, res) => {
   res.clearCookie('token', { httpOnly: true, sameSite: 'none', secure: true });
   try {
-    const { phoneNumber, otp } = req.body;
-     console.log(phoneNumber,otp)
-    const result = await pool.query('SELECT password FROM users WHERE email = $1', [phoneNumber]);
+    const { phoneNumber1, otp } = req.body;
+     console.log(phoneNumber1,otp)
+    const result = await pool.query('SELECT password FROM users WHERE email = $1', [phoneNumber1]);
     if (result.rows.length === 0) {
       return res.status(404).send('Phone number not found');
     }
@@ -46,7 +46,7 @@ router.post('/verify-otp', async (req, res) => {
     const userOtp = result.rows[0].password;
     
     if (userOtp === otp) {
-      const token = generateToken(phoneNumber);
+      const token = generateToken(phoneNumber1);
       res.cookie('token', token, { httpOnly: true, sameSite: 'none', secure: true, maxAge: 1800000 });
       
       res.status(200).json({ token });
@@ -89,17 +89,49 @@ const verifyToken = (req, res, next) => {
       res.status(500).json({ error: 'Server error' });
     }
   });
-  router.get('/packages',async (req, res) => {
+
+  router.get('/packages1',async (req, res) => {
     try {
     
-        const result=await pool.query(
-          'SELECT * FROM public."package" ORDER BY package_id ASC'
-        );
-        const result1=await pool.query(
-            'SELECT * FROM public.time_slot ORDER BY slot_id ASC'
-          );
+      const result=await pool.query(
+        'SELECT * FROM public."package" ORDER BY package_id ASC'
+      );
+      
+  res.status(200).json(result.rows);
+
     
-    res.status(200).json([result.rows, result1.rows]);
+    } catch (err) {
+      console.error(err);
+      res.status(500).send('Error generating OTP');
+    }
+  });
+  router.get('/packages',async (req, res) => {
+    const date=req.query.formatedDate;
+    console.log(date)
+    try {
+    
+        
+        const result1 = await pool.query(
+          `SELECT ts.slot_id, ts.time_slot
+           FROM time_slot ts
+           LEFT JOIN appointment a ON ts.slot_id = a.slot_id AND a.appoint_date = $1
+           LEFT JOIN blocked_schedules bs ON bs.schedule_date = $1
+           WHERE a.slot_id IS NULL
+             AND (bs IS NULL OR (
+                  (ts.slot_id = 1 AND bs.time_slot1 = '0') OR
+                  (ts.slot_id = 2 AND bs.time_slot2 = '0') OR
+                  (ts.slot_id = 3 AND bs.time_slot3 = '0') OR
+                  (ts.slot_id = 4 AND bs.time_slot4 = '0') OR
+                  (ts.slot_id = 5 AND bs.time_slot5 = '0') OR
+                  (ts.slot_id = 6 AND bs.time_slot6 = '0') OR
+                  (ts.slot_id = 7 AND bs.time_slot7 = '0') OR
+                  (ts.slot_id = 8 AND bs.time_slot8 = '0') OR
+                  (ts.slot_id = 9 AND bs.time_slot9 = '0')
+              ))`,
+          [date]
+      );
+    
+    res.status(200).json(result1.rows);
 
       
       } catch (err) {
