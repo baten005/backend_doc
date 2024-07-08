@@ -31,8 +31,8 @@ const is_live = false;
 
 router.get('/payment', verifyToken, (req, res) => {
     const encodedData = req.query.data;
-    if (!encodedData) {
-        return res.status(400).send('Missing data');
+    if (true) {
+        return res.status(404).send('Up Coming');
     }
 
     const formData = JSON.parse(Buffer.from(encodedData, 'base64').toString('utf8'));
@@ -110,13 +110,11 @@ router.post("/fail", async function (req, res) {
     console.log('fail');
     res.redirect('https://www.hurairaconsultancy.com/booking');
 });
-
-router.get("/success", async function (req, res) {
-    // Handle GET request if needed
+router.post("/cancel", async function (req, res) {
+    console.log('fail');
+    res.redirect('https://www.hurairaconsultancy.com/booking');
 });
 
-router.get("/failed", async function (req, res) {
-    // Handle GET request if needed
-});
+
 
 module.exports = router;

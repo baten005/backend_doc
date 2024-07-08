@@ -22,8 +22,19 @@ const privateKey = fs.readFileSync(privateKeyPath, 'utf8');
 const certificate = fs.readFileSync(certificatePath, 'utf8');
 const ca = fs.readFileSync(caPath, 'utf8');
 
-const credentials = { key: privateKey, cert: certificate, ca: ca };*/
+const credentials = { key: privateKey, cert: certificate, ca: ca };
+*/
 
+
+
+
+/*
+const privateKey = fs.readFileSync('/etc/letsencrypt/live/backend.hurairaconsultancy.com/privkey.pem', 'utf8');
+const certificate = fs.readFileSync('/etc/letsencrypt/live/backend.hurairaconsultancy.com/cert.pem', 'utf8');
+const ca = fs.readFileSync('/etc/letsencrypt/live/backend.hurairaconsultancy.com/chain.pem', 'utf8');
+
+const credentials = { key: privateKey, cert: certificate, ca: ca };
+*/
 app.use(cors({
   origin: ['https://consultancy-admin-1.onrender.com','http://localhost:3000','http://localhost:3001', 'http://93.127.166.229:81', 'http://93.127.166.229:82','https://www.hurairaconsultancy.com','http://admin.hurairaconsultancy.com'
     ,'https://hurairaconsultancy.com','https://admin.hurairaconsultancy.com'
@@ -498,6 +509,22 @@ app.post('/updateappointment', authenticateToken, async (req, res) => {
     res.status(500).json({ error: 'Internal server error.' });
   }
 });
+app.post('/deleteAdmin', authenticateToken, async (req, res) => {
+  const { admin } = req.body;
+  
+  console.log(admin)
+
+  try {
+    const result = await pool.query('DELETE FROM public.admin WHERE id=$1;', [admin]);
+    const result1 = await pool.query('DELETE FROM public.admin_permission WHERE admin_id=$1;', [admin]);
+
+    res.status(200).json('updated');
+
+  } catch (error) {
+    console.error('Error changing password:', error);
+    res.status(500).json({ error: 'Internal server error.' });
+  }
+});
 
 
 app.get('/',async (req, res) => {
@@ -509,5 +536,4 @@ app.listen(port, () => {
 });
 /*https.createServer(credentials, app).listen(port, () => {
   console.log(`Server running on port ${port}`);
-});
-*/
+});*/

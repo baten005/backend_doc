@@ -3,6 +3,7 @@ const router = express.Router();
 const pool = require('../db/db');
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
+const { sendSingleSms } = require('./sms');
 
 const generateOtp = () => {
   return crypto.randomInt(1000, 9999).toString();
@@ -24,6 +25,19 @@ router.post('/otp', async (req, res) => {
       [phoneNumber1, otp, 'client']
     );
 
+    if (!phoneNumber1) {
+      return res.status(400).json({ error: 'Phone number and OTP are required' });
+    }
+  
+    /*const csmsId = Math.random().toString(36).substr(2, 9); // Generate a unique csms_id
+  
+    try {
+      const response = await sendSingleSms(phoneNumber1, `Your OTP is ${otp}`, csmsId);
+      res.json(response);
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+      */
     console.log(`OTP for ${phoneNumber1}: ${otp}`);
 
     res.status(200).json(otp)

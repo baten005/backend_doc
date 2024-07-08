@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../db/db');
 
-// Route to get blocked schedules
+
 router.get('/blockedSchedules', async (req, res) => {
     try {
         const result = await pool.query('SELECT * FROM blocked_schedules');
@@ -13,7 +13,6 @@ router.get('/blockedSchedules', async (req, res) => {
     }
 });
 
-// Route to block a schedule
 router.post('/blockCells', async (req, res) => {
     const date = req.body.formatedDate;
     const time_slot=req.body.timeSlot
