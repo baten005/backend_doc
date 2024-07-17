@@ -1,8 +1,9 @@
 const express = require('express');
+const crypto = require('crypto');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const cookieParser = require('cookie-parser');
-const pool = require('./db/db');
+const {pool} = require('./db/db');
 const otp=require('./routes/user'); 
 const payment=require('./routes/payment');
 const blockScheduleRouter = require('./routes/blockSchedule');
@@ -11,7 +12,9 @@ const fs = require('fs');
 const { error } = require('console');
 const app = express();
 const port = 3003;
-const secretKey = 'your_secret_key'; 
+const secretKey = crypto.randomBytes(32).toString('hex');
+const { scheduleAppointmentReminders } = require('./routes/appointmentReminderScheduler');
+ 
 const https = require('https');
 console.log(__dirname)
 /*const privateKeyPath = path.join(__dirname, 'backend.hurairaconsultancy.com', 'privkey.pem');
@@ -55,23 +58,24 @@ app.post('/login', async (req, res) => {
   const { username, password } = req.body;
  console.log(username,password)
   try {
-    const result = await pool.query('SELECT * FROM admin WHERE username = $1', [username]);
-    console.log(result.rows);
-    if (result.rows.length === 0) {
+    const [result] = await pool.query('SELECT * FROM admin WHERE username = ?', [username]);
+    console.log(result);
+    if (result.length === 0) {
       return res.status(401).json({ message: 'Invalid username or password' });
     }
 
-    const user = result.rows[0];
+    const user = result;
 
-
-    if (password !== user.password) {
+    console.log(1)
+    if (password !== user[0].password) {
       return res.status(401).json({ message: 'Invalid username or password' });
     }
-
-    const token1 = jwt.sign({ id: user.id }, secretKey, { expiresIn: '30d' });
+    const [permission]=await pool.query('SELECT dashboard,promotion FROM admin_permission where admin_id=?',[result[0].id]);
+    console.log(2)
+    const token1 = jwt.sign({ id: user[0].id }, secretKey, { expiresIn: '30d' });
     res.cookie('token1', token1, { httpOnly: true, sameSite: 'none', secure: true });
 
-    res.status(200).json({ message: 'Login successful' });
+    res.status(200).json({ message: 'Login successful',permission: permission[0].dashboard==1?'true':'false', permission1: permission[0].promotion==1?'true':'false' });
   } catch (err) {
     console.error('Error during login:', err.stack);
     res.status(500).json({ error: 'Internal server error' });
@@ -99,6 +103,7 @@ const authenticateToken = (req, res, next) => {
     }
 
     req.userId = decoded.id;
+    console.log(req.userId)
 
     next();
   });
@@ -106,10 +111,10 @@ const authenticateToken = (req, res, next) => {
 
 app.get('/dashboard', authenticateToken, async (req, res) => {
   try {
-    const result = await pool.query(`SELECT a.id, a.username, ap.dashboard, ap.appointment, ap.payment, ap.package, ap.promotion, ap.permission
+    const [result] = await pool.query(`SELECT a.id, a.username, ap.dashboard, ap.appointment, ap.payment, ap.package, ap.promotion, ap.permission
       FROM admin a
-      LEFT JOIN admin_permission ap ON a.id = ap.admin_id WHERE a.id = $1`, [req.userId]);
-    res.status(200).json(result.rows[0]);
+      LEFT JOIN admin_permission ap ON a.id = ap.admin_id WHERE a.id = ?`, [req.userId]);
+    res.status(200).json(result[0]);
   } catch (err) {
     console.error('Error fetching user data:', err.stack);
     res.status(500).json({ error: 'Internal server error' });
@@ -121,21 +126,18 @@ app.post('/addAdmin', authenticateToken, async (req, res) => {
   const { admin, password } = req.body;
 
   try {
-    // Update the sequence for the admin_id_seq
-    await pool.query('SELECT setval(\'admin_id_seq\', (SELECT MAX(id) FROM admin))');
-
-    // Insert into admin and return the id
-    const result = await pool.query(
-      'INSERT INTO public.admin(username, password) VALUES ($1, $2) RETURNING id',
+    // Insert into admin and retrieve the last inserted ID
+    const [result] = await pool.query(
+      'INSERT INTO admin(username, password) VALUES (?, ?)',
       [admin, password]
     );
 
-    const adminId = result.rows[0].id;
+    const adminId = result.insertId; // Retrieve the last inserted ID
 
-    // Insert into admin_permission using the returned id
+    // Insert into admin_permission using the retrieved admin ID
     await pool.query(
-      'INSERT INTO public.admin_permission(admin_id, dashboard, appointment, payment, "package", promotion, permission) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-      [adminId, true, false, false, false, false, false]
+      'INSERT INTO admin_permission(admin_id, dashboard, appointment, payment, package, promotion, permission) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [adminId, 1, 0, 0, 0, 0, 0]
     );
 
     res.status(200).json({ id: adminId });
@@ -146,14 +148,15 @@ app.post('/addAdmin', authenticateToken, async (req, res) => {
 });
 
 
+
 app.get('/getAdmins', authenticateToken, async (req, res) => {
   try {
-    const result = await pool.query(`
+    const [result] = await pool.query(`
       SELECT a.id, a.username, ap.dashboard, ap.appointment, ap.payment, ap.package, ap.promotion, ap.permission
       FROM admin a
       LEFT JOIN admin_permission ap ON a.id = ap.admin_id
     `);
-    res.status(200).json(result.rows);
+    res.status(200).json(result);
   } catch (err) {
     console.error('Error fetching admins:', err.stack);
     res.status(500).json({ error: 'Internal server error' });
@@ -168,7 +171,7 @@ app.post('/updateAdminPermission', authenticateToken, async (req, res) => {
   try {
     for (const permission of allPermissions) {
       const value = data.includes(permission.charAt(0).toUpperCase() + permission.slice(1)) ? true : false;
-     const det= await pool.query(`UPDATE admin_permission SET ${permission} = $1 WHERE admin_id = $2`, [value, admin_id]);
+     const [det]= await pool.query(`UPDATE admin_permission SET ${permission} = ? WHERE admin_id = ?`, [value, admin_id]);
      console.log(value)
   }
 
@@ -204,13 +207,13 @@ app.get('/timeslotsdashboard', authenticateToken, async (req, res) => {
           ORDER BY 
               ts.slot_id, a.appoint_date;
       `;
-      const result = await pool.query(query);
+      const [result] = await pool.query(query);
 
 
       const timeSlots = [];
       let currentSlot = null;
 
-      result.rows.forEach((row) => {
+      result.forEach((row) => {
           if (!currentSlot || currentSlot.slot_id !== row.slot_id) {
               currentSlot = {
                   slot_id: row.slot_id,
@@ -248,7 +251,7 @@ app.get('/todayappointments', authenticateToken, async (req, res) => {
       const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
       const query = `
           SELECT * FROM appointment
-          WHERE appoint_date >= $1 AND appoint_date < $2
+          WHERE appoint_date >= ? AND appoint_date < ?
       `;
       const { rows } = await pool.query(query, [startOfDay, endOfDay]);
       res.json(rows);
@@ -270,9 +273,9 @@ console.log(thisMonthStart);
       const query = `
           SELECT
               COUNT(DISTINCT user_phonenum) AS totalUsers,
-              (SELECT COUNT(DISTINCT user_phonenum) FROM appointment WHERE appoint_date >= $1 AND appoint_date < $2) AS lastMonthUsers,
-              (SELECT COUNT(*) FROM appointment WHERE appoint_date >= $3 AND appoint_date < $4) AS thisMonthReservations,
-              (SELECT COUNT(*) FROM appointment WHERE appoint_date >= $1 AND appoint_date < $2) AS lastMonthReservations
+              (SELECT COUNT(DISTINCT user_phonenum) FROM appointment WHERE appoint_date >= ? AND appoint_date < ?) AS lastMonthUsers,
+              (SELECT COUNT(*) FROM appointment WHERE appoint_date >= ? AND appoint_date < ?) AS thisMonthReservations,
+              (SELECT COUNT(*) FROM appointment WHERE appoint_date >= ? AND appoint_date < ?) AS lastMonthReservations
           FROM appointment;
       `;
 
@@ -280,10 +283,12 @@ console.log(thisMonthStart);
         lastMonthStart,
         lastMonthEnd,
         thisMonthStart,
-        thisMonthEnd
+        thisMonthEnd,
+        lastMonthStart,
+        lastMonthEnd
       ]);
 
-      res.json(rows[0]);
+      res.json(rows);
   } catch (error) {
       console.error('Error fetching monthly statistics:', error);
       res.status(500).json({ error: 'Server error' });
@@ -316,6 +321,8 @@ app.get('/package', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('Error fetching packages:', error.stack);
     res.status(500).json({ error: 'Internal server error' });
+  }finally{
+    //Client.release()
   }
 });
 
@@ -527,11 +534,49 @@ app.post('/deleteAdmin', authenticateToken, async (req, res) => {
 });
 
 
-app.get('/',async (req, res) => {
- res.send('kaka')
+app.get('/getAllAppoinment',async (req, res) => {
+  const result= await pool.query(`SELECT user_fullname,user_phonenum FROM public.appointment
+ORDER BY appointment_id ASC`);
+console.log(result.rows)
+ res.json(result.rows);
+});
+app.post('/getAllNumbers', async (req, res) => {
+  const { fromDate, toDate } = req.body;
+  console.log(fromDate, toDate);
+
+  try {
+    const result = await pool.query(
+      `SELECT user_fullname, user_phonenum 
+       FROM public.appointment 
+       WHERE appoint_date BETWEEN $1 AND $2`,
+      [fromDate, toDate]
+    );
+    console.log(result.rows);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching appointments:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+const { sendBulkSms } = require('./routes/bulkSms');
+const { Client } = require('pg');
+app.post('/sendBulkSms', async (req, res) => {
+  const { sms, message } = req.body;
+
+  if (!sms || !message) {
+    return res.status(400).json({ error: 'Both sms and message are required' });
+  }
+
+  try {
+    const result = await sendBulkSms(sms, message);
+    res.json({ success: true, result });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 app.listen(port, () => {
+  scheduleAppointmentReminders()
   console.log(`Server running on port ${port}`);
 });
 /*https.createServer(credentials, app).listen(port, () => {
