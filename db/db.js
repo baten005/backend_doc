@@ -1,14 +1,27 @@
-const { Pool } = require('pg');
+const mysql = require('mysql2/promise');
 
-const pool = new Pool({
-  //connectionString: 'postgresql://cpl_pstu:XkcTPal2nF9DNm8G1UJKnlv4dhxlwg1U@dpg-cp3q9f7sc6pc73fu2n8g-a.oregon-postgres.render.com/cpl_pstu',
-  connectionString: 'postgresql://ratin:12345@93.127.166.229:5432/ratin',
-  ssl: {
-    rejectUnauthorized: false,
-  },
-  max: 20,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
+
+const pool = mysql.createPool({
+  connectionLimit: 20, 
+  host: '93.127.166.229', 
+  user: 'huraira_consultancy', 
+  password: 'Baten219135_', 
+  database: 'huraira_consultancy', 
+  waitForConnections: true,
+  queueLimit: 0, 
 });
 
-module.exports = pool;
+
+module.exports = {
+  query: (sql, values) => {
+    return new Promise((resolve, reject) => {
+      pool.execute(sql, values, (err, results) => {
+        if (err) {
+          return reject(err);
+        }
+        resolve(results);
+      });
+    });
+  },
+  pool: pool, 
+};
