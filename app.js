@@ -316,34 +316,37 @@ app.delete('/cancelappointment/:id', authenticateToken, async (req, res) => {
 //--------------------------package--------------------
 app.get('/package', authenticateToken, async (req, res) => {
   try {
-    const result = await pool.query('SELECT package_id AS _id, name, price FROM package');
-    res.status(200).json(result.rows);
+    const [rows] = await pool.query('SELECT package_id AS _id, name, price FROM package');
+    res.status(200).json(rows);
   } catch (error) {
     console.error('Error fetching packages:', error.stack);
     res.status(500).json({ error: 'Internal server error' });
-  }finally{
-    //Client.release()
   }
 });
 
 app.post('/package', authenticateToken, async (req, res) => {
   const { name, price } = req.body;
   try {
-    const result = await pool.query(
-      'INSERT INTO package (name, price) VALUES ($1, $2) RETURNING package_id AS _id, name, price',
+    const [result] = await pool.query(
+      'INSERT INTO package (name, price) VALUES (?, ?)',
       [name, price]
     );
-    res.status(201).json(result.rows[0]);
+    const insertedPackage = {
+      _id: result.insertId,
+      name,
+      price
+    };
+    res.status(201).json(insertedPackage);
   } catch (error) {
     console.error('Error adding package:', error.stack);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-app.delete('/package/:id',authenticateToken, async (req, res) => {
+app.delete('/package/:id', authenticateToken, async (req, res) => {
   const { id } = req.params;
   try {
-    await pool.query('DELETE FROM package WHERE package_id = $1', [id]);
+    await pool.query('DELETE FROM package WHERE package_id = ?', [id]);
     res.status(200).json({ message: 'Package removed successfully' });
   } catch (error) {
     console.error('Error removing package:', error.stack);
@@ -351,24 +354,22 @@ app.delete('/package/:id',authenticateToken, async (req, res) => {
   }
 });
 
-
-
 //------------------------appointment------------------
 
 app.get('/timeslots', authenticateToken, async (req, res) => {
   const { date } = req.query;
   if (!date) {
-      return res.status(400).send('Date is required');
+    return res.status(400).send('Date is required');
   }
 
   try {
-    const result = await pool.query(
+    const [result] = await pool.query(
       `SELECT ts.slot_id, ts.time_slot
        FROM time_slot ts
-       LEFT JOIN appointment a ON ts.slot_id = a.slot_id AND a.appoint_date = $1
-       LEFT JOIN blocked_schedules bs ON bs.schedule_date = $1
+       LEFT JOIN appointment a ON ts.slot_id = a.slot_id AND a.appoint_date = ?
+       LEFT JOIN blocked_schedules bs ON bs.schedule_date = ?
        WHERE a.slot_id IS NULL
-         AND (bs IS NULL OR (
+         AND (bs.schedule_date IS NULL OR (
               (ts.slot_id = 1 AND bs.time_slot1 = '0') OR
               (ts.slot_id = 2 AND bs.time_slot2 = '0') OR
               (ts.slot_id = 3 AND bs.time_slot3 = '0') OR
@@ -379,95 +380,107 @@ app.get('/timeslots', authenticateToken, async (req, res) => {
               (ts.slot_id = 8 AND bs.time_slot8 = '0') OR
               (ts.slot_id = 9 AND bs.time_slot9 = '0')
           ))`,
-      [date]
-  );
-  
-      res.json(result.rows);
+      [date, date]
+    );
+
+    res.json(result);
   } catch (error) {
-      console.error('Error fetching time slots:', error);
-      res.status(500).send('Server error');
+    console.error('Error fetching time slots:', error);
+    res.status(500).send('Server error');
   }
 });
 
-app.post('/appointment', authenticateToken,  async (req, res) => {
+
+app.post('/appointment', authenticateToken, async (req, res) => {
   const { package_id, appoint_type, appoint_date, user_fullname, user_phonenum, slot_id } = req.body;
 
   if (!package_id || !appoint_type || !appoint_date || !user_fullname || !user_phonenum || !slot_id) {
-      return res.status(400).send('All fields are required');
+    return res.status(400).send('All fields are required');
   }
 
   try {
-      const result = await pool.query(
-          `INSERT INTO appointment (package_id, appoint_type, appoint_date, user_fullname, user_phonenum, slot_id)
-          VALUES ($1, $2, $3, $4, $5, $6)`,
-          [parseInt(package_id), appoint_type, appoint_date, user_fullname, user_phonenum, slot_id] 
-      );
-      res.status(201).json(result.rows[0]);
+    const [result] = await pool.query(
+      `INSERT INTO appointment (package_id, appoint_type, appoint_date, user_fullname, user_phonenum, slot_id)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [parseInt(package_id), appoint_type, appoint_date, user_fullname, user_phonenum, slot_id]
+    );
+
+    // Combine the result with the input to send back the newly created appointment
+    const insertedAppointment = {
+      appointment_id: result.insertId,
+      package_id: parseInt(package_id),
+      appoint_type,
+      appoint_date,
+      user_fullname,
+      user_phonenum,
+      slot_id
+    };
+
+    res.status(201).json(insertedAppointment);
   } catch (error) {
-      console.error('Error creating appointment:', error);
-      res.status(500).send('Server error');
+    console.error('Error creating appointment:', error);
+    res.status(500).send('Server error');
   }
 });
 
 
 
-//---------------------------------------------
 
-//-------------------payment--------------------
-app.get('/payments',authenticateToken, async (req, res) => {
+//-----------------------payment ----------------------
+
+app.get('/payments', authenticateToken, async (req, res) => {
   const { search } = req.query;
 
   try {
-      let result;
-      if (search) {
-          result = await pool.query(`
-              SELECT 
-                  a.user_fullname, 
-                  a.user_phonenum, 
-                  p.amount, 
-                  pa.name AS package_name, 
-                  to_char(p.date, 'DD Mon, YYYY') AS payment_date,
-                  to_char(p.time, 'HH:MI AM') AS payment_time
-              FROM 
-                  payment p
-              JOIN 
-                  appointment a ON a.appointment_id = p.appointment_id
-              JOIN 
-                  package pa ON a.package_id = pa.package_id
-              WHERE 
-                  a.user_fullname ILIKE $1 OR a.user_phonenum ILIKE $1
-              ORDER BY 
-                  p.date DESC, p.time DESC
-          `, [`%${search}%`]);
-      } else {
-    
-                result = await pool.query(`
-              SELECT 
-                  a.user_fullname, 
-                  a.user_phonenum, 
-                  p.amount, 
-                  pa.name AS package_name, 
-                  to_char(p.date, 'DD Mon, YYYY') AS payment_date,
-                  to_char(p.time, 'HH:MI AM') AS payment_time
-              FROM 
-                  payment p
-              JOIN 
-                  appointment a ON a.appointment_id = p.appointment_id
-              JOIN 
-                  package pa ON a.package_id = pa.package_id
-              ORDER BY 
-                  p.date DESC, p.time DESC
-          `);
-      }
+    let result;
+    if (search) {
+      [result] = await pool.query(`
+        SELECT 
+          a.user_fullname, 
+          a.user_phonenum, 
+          p.amount, 
+          pa.name AS package_name, 
+          DATE_FORMAT(p.date, '%d %b, %Y') AS payment_date,
+          DATE_FORMAT(p.time, '%h:%i %p') AS payment_time
+        FROM 
+          payment p
+        JOIN 
+          appointment a ON a.appointment_id = p.appointment_id
+        JOIN 
+          package pa ON a.package_id = pa.package_id
+        WHERE 
+          a.user_fullname LIKE ? OR a.user_phonenum LIKE ?
+        ORDER BY 
+          p.date DESC, p.time DESC
+      `, [`%${search}%`, `%${search}%`]);
+    } else {
+      [result] = await pool.query(`
+        SELECT 
+          a.user_fullname, 
+          a.user_phonenum, 
+          p.amount, 
+          pa.name AS package_name, 
+          DATE_FORMAT(p.date, '%d %b, %Y') AS payment_date,
+          DATE_FORMAT(p.time, '%h:%i %p') AS payment_time
+        FROM 
+          payment p
+        JOIN 
+          appointment a ON a.appointment_id = p.appointment_id
+        JOIN 
+          package pa ON a.package_id = pa.package_id
+        ORDER BY 
+          p.date DESC, p.time DESC
+      `);
+    }
 
-      if (result.rows.length > 0) {
-          res.json(result.rows);
-      } else {
-          res.status(200).json(null);
-      }
+    if (result.length > 0) {
+      res.json(result);
+    } else {
+      res.status(200).json(null);
+    }
   } catch (error) {
-      console.error('Error fetching payments:', error.stack);
-      res.status(500).json({ error: 'Internal server error' });
+    console.error('Error fetching payments:', error.stack);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
