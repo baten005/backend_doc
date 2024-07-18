@@ -109,6 +109,9 @@ const authenticateToken = (req, res, next) => {
   });
 };
 
+
+//------------------------------------permission------------------------
+
 app.get('/dashboard', authenticateToken, async (req, res) => {
   try {
     const [result] = await pool.query(`SELECT a.id, a.username, ap.dashboard, ap.appointment, ap.payment, ap.package, ap.promotion, ap.permission
@@ -183,7 +186,23 @@ app.post('/updateAdminPermission', authenticateToken, async (req, res) => {
   }
 });
 
-// ------------Dashboard-------------------
+app.post('/deleteAdmin', authenticateToken, async (req, res) => {
+  const { admin } = req.body;
+  
+  console.log(admin)
+
+  try {
+    const result = await pool.query('DELETE FROM public.admin WHERE id=$1;', [admin]);
+    const result1 = await pool.query('DELETE FROM public.admin_permission WHERE admin_id=$1;', [admin]);
+
+    res.status(200).json('updated');
+
+  } catch (error) {
+    console.error('Error changing password:', error);
+    res.status(500).json({ error: 'Internal server error.' });
+  }
+});
+// ------------------------------Dashboard-------------------
 
 app.get('/timeslotsdashboard', authenticateToken, async (req, res) => {
   try {
@@ -299,8 +318,8 @@ console.log(thisMonthStart);
 app.delete('/cancelappointment/:id', authenticateToken, async (req, res) => {
   const { id } = req.params;
   try {
-    const result = await pool.query('DELETE FROM appointment WHERE appointment_id = $1', [id]);
-    if (result.rowCount > 0) {
+    const [result] = await pool.query('DELETE FROM appointment WHERE appointment_id = ?', [id]);
+    if (result.affectedRows > 0) {
       res.status(200).json({ message: 'Appointment cancelled successfully' });
     } else {
       res.status(404).json({ message: 'Appointment not found' });
@@ -311,7 +330,23 @@ app.delete('/cancelappointment/:id', authenticateToken, async (req, res) => {
   }
 });
 
+app.post('/updateappointment', authenticateToken, async (req, res) => {
+  const { date, timeSlot } = req.body;
+  const a_id = req.query.appointment_id;
+  console.log(date, timeSlot, a_id);
 
+  try {
+    const [result] = await pool.query('UPDATE appointment SET appoint_date = ?, slot_id = ? WHERE appointment_id = ?', [date, timeSlot, a_id]);
+    if (result.affectedRows > 0) {
+      res.status(200).json('updated');
+    } else {
+      res.status(404).json({ message: 'Appointment not found' });
+    }
+  } catch (error) {
+    console.error('Error updating appointment:', error);
+    res.status(500).json({ error: 'Internal server error.' });
+  }
+});
 
 //--------------------------package--------------------
 app.get('/package', authenticateToken, async (req, res) => {
@@ -487,92 +522,40 @@ app.get('/payments', authenticateToken, async (req, res) => {
 
 
 
-//---------------------------------------------
+//------------------------promotion-------------------------------------
 
-app.post('/changepassword', authenticateToken, async (req, res) => {
-  const { currentPassword, newPassword } = req.body;
-  const userId = req.userId;
-
+app.get('/getAllAppointment', async (req, res) => {
   try {
-    const result = await pool.query('SELECT password FROM admin WHERE id = $1', [userId]);
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Admin not found.' });
-    }
-
-    const user = result.rows[0];
-
-    if (currentPassword !== user.password) {
-      return res.status(400).json({ error: 'Current password is incorrect.' });
-    }
-
-    await pool.query('UPDATE admin SET password = $1 WHERE id = $2', [newPassword, userId]);
-
-    res.json({ success: true, message: 'Password changed successfully.' });
-  } catch (error) {
-    console.error('Error changing password:', error);
-    res.status(500).json({ error: 'Internal server error.' });
-  }
-});
-app.post('/updateappointment', authenticateToken, async (req, res) => {
-  const { date,timeSlot } = req.body;
-  const a_id = req.query.appoinment_id;
-  console.log(date,timeSlot,a_id)
-
-  try {
-    const result = await pool.query('UPDATE appointment SET appoint_date = $1,slot_id=$2  WHERE appointment_id = $3', [date,timeSlot,a_id]);
-
-    res.status(200).json('updated');
-
-  } catch (error) {
-    console.error('Error changing password:', error);
-    res.status(500).json({ error: 'Internal server error.' });
-  }
-});
-app.post('/deleteAdmin', authenticateToken, async (req, res) => {
-  const { admin } = req.body;
-  
-  console.log(admin)
-
-  try {
-    const result = await pool.query('DELETE FROM public.admin WHERE id=$1;', [admin]);
-    const result1 = await pool.query('DELETE FROM public.admin_permission WHERE admin_id=$1;', [admin]);
-
-    res.status(200).json('updated');
-
-  } catch (error) {
-    console.error('Error changing password:', error);
-    res.status(500).json({ error: 'Internal server error.' });
-  }
-});
-
-
-app.get('/getAllAppoinment',async (req, res) => {
-  const result= await pool.query(`SELECT user_fullname,user_phonenum FROM public.appointment
-ORDER BY appointment_id ASC`);
-console.log(result.rows)
- res.json(result.rows);
-});
-app.post('/getAllNumbers', async (req, res) => {
-  const { fromDate, toDate } = req.body;
-  console.log(fromDate, toDate);
-
-  try {
-    const result = await pool.query(
-      `SELECT user_fullname, user_phonenum 
-       FROM public.appointment 
-       WHERE appoint_date BETWEEN $1 AND $2`,
-      [fromDate, toDate]
-    );
-    console.log(result.rows);
-    res.json(result.rows);
+    const [result] = await pool.query(`SELECT user_fullname, user_phonenum FROM appointment ORDER BY appointment_id ASC`);
+    console.log(result);
+    res.json(result);
   } catch (error) {
     console.error('Error fetching appointments:', error);
     res.status(500).json({ error: 'Internal Server Error' });
   }
 });
+
+app.post('/getAllNumbers', async (req, res) => {
+  const { fromDate, toDate } = req.body;
+  console.log(fromDate, toDate);
+
+  try {
+    const [result] = await pool.query(
+      `SELECT user_fullname, user_phonenum 
+       FROM appointment 
+       WHERE appoint_date BETWEEN ? AND ?`,
+      [fromDate, toDate]
+    );
+    console.log(result);
+    res.json(result);
+  } catch (error) {
+    console.error('Error fetching appointments:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
 const { sendBulkSms } = require('./routes/bulkSms');
-const { Client } = require('pg');
+
 app.post('/sendBulkSms', async (req, res) => {
   const { sms, message } = req.body;
 
@@ -587,6 +570,39 @@ app.post('/sendBulkSms', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
+
+
+//-------------------------change pass----------------------
+
+app.post('/changepassword', authenticateToken, async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+  const userId = req.userId;
+
+  try {
+    const [result] = await pool.query('SELECT password FROM admin WHERE id = ?', [userId]);
+
+    if (result.length === 0) {
+      return res.status(404).json({ error: 'Admin not found.' });
+    }
+
+    const user = result[0];
+
+    if (currentPassword !== user.password) {
+      return res.status(400).json({ error: 'Current password is incorrect.' });
+    }
+
+    await pool.query('UPDATE admin SET password = ? WHERE id = ?', [newPassword, userId]);
+
+    res.json({ success: true, message: 'Password changed successfully.' });
+  } catch (error) {
+    console.error('Error changing password:', error);
+    res.status(500).json({ error: 'Internal server error.' });
+  }
+});
+
+//---------------------------------------------
+
 
 app.listen(port, () => {
   scheduleAppointmentReminders()
