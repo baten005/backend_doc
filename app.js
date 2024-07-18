@@ -535,10 +535,10 @@ app.post('/deleteAdmin', authenticateToken, async (req, res) => {
 
 
 app.get('/getAllAppoinment',async (req, res) => {
-  const result= await pool.query(`SELECT user_fullname,user_phonenum FROM public.appointment
+  const [result]= await pool.query(`SELECT user_fullname,user_phonenum FROM appointment
 ORDER BY appointment_id ASC`);
-console.log(result.rows)
- res.json(result.rows);
+console.log(result)
+ res.json(result);
 });
 app.post('/getAllNumbers', async (req, res) => {
   const { fromDate, toDate } = req.body;
