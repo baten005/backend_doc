@@ -1,15 +1,12 @@
-// appointmentReminderScheduler.js
+
 const { sendBulkSms } = require("./bulkSms");
 const pool = require("../db/db");
 const moment = require("moment-timezone");
 
-// Function to send SMS to users with appointments today at 8 AM Bangladesh time
 const sendAppointmentReminders = async () => {
   try {
-    // Get today's date in Bangladesh timezone
     const today = moment().tz("Asia/Dhaka").format("YYYY-MM-DD");
 
-    // Query appointments for today with time slots
     const result = await pool.query(
       `SELECT a.user_phonenum, ts.time_slot
        FROM public.appointment a
@@ -25,7 +22,6 @@ const sendAppointmentReminders = async () => {
     const messages = result.rows.map(row => {
         const { user_phonenum, time_slot } = row;
         
-        // Extract start time from time_slot (assuming time_slot format is "start_time - end_time")
         const startTime = time_slot.split(' - ')[0];
   
         return {
@@ -47,7 +43,7 @@ const sendAppointmentReminders = async () => {
 
 const scheduleAppointmentReminders = () => {
   const now = moment().tz("Asia/Dhaka");
-  const eightAM = now.clone().startOf("day").hour(16);
+  const eightAM = now.clone().startOf("day").hour(8);
 
   if (now.isAfter(eightAM)) {
     eightAM.add(1, "day");

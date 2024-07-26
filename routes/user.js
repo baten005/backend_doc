@@ -60,7 +60,7 @@ router.post('/verify-otp', async (req, res) => {
     
     if (userOtp === otp) {
       const token = generateToken(phoneNumber1);
-      res.cookie('token', token, { httpOnly: true, sameSite: 'none', secure: true, maxAge: 1800000 });
+      res.cookie('token', token, { httpOnly: true, sameSite: 'none', secure: true});
       
       res.status(200).json({ token });
     } else {
