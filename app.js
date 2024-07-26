@@ -349,9 +349,10 @@ app.post('/updateappointment', authenticateToken, async (req, res) => {
 });
 
 //--------------------------package--------------------
+
 app.get('/package', authenticateToken, async (req, res) => {
   try {
-    const [rows] = await pool.query('SELECT package_id AS _id, name, price FROM package');
+    const [rows] = await pool.query('SELECT package_id AS _id, name, price_inTaka, price_inDollar FROM package');
     res.status(200).json(rows);
   } catch (error) {
     console.error('Error fetching packages:', error.stack);
@@ -359,17 +360,19 @@ app.get('/package', authenticateToken, async (req, res) => {
   }
 });
 
+
 app.post('/package', authenticateToken, async (req, res) => {
-  const { name, price } = req.body;
+  const { name, price_inTaka, price_inDollar } = req.body;
   try {
     const [result] = await pool.query(
-      'INSERT INTO package (name, price) VALUES (?, ?)',
-      [name, price]
+      'INSERT INTO package (name, price_inTaka, price_inDollar) VALUES (?, ?, ?)',
+      [name, price_inTaka, price_inDollar]
     );
     const insertedPackage = {
       _id: result.insertId,
       name,
-      price
+      price_inTaka,
+      price_inDollar
     };
     res.status(201).json(insertedPackage);
   } catch (error) {
