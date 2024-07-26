@@ -1,6 +1,15 @@
 const mysql = require('mysql2/promise');
 
 
+/*const pool = mysql.createPool({
+  connectionLimit: 20, 
+  host: 'localhost', 
+  user: 'root', 
+  password: '', 
+  database: 'huraira_consultancy', 
+  waitForConnections: true,
+  queueLimit: 0, 
+});*/
 const pool = mysql.createPool({
   connectionLimit: 20, 
   host: '93.127.166.229', 
@@ -9,7 +18,7 @@ const pool = mysql.createPool({
   database: 'huraira_consultancy', 
   waitForConnections: true,
   queueLimit: 0, 
-});
+}); 
 
 
 module.exports = {

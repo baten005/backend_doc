@@ -84,3 +84,34 @@ BEGIN
 END //
 
 DELIMITER ;
+
+
+
+BEGIN
+    DECLARE should_block BOOLEAN;
+
+    -- Check if the date already exists in blocked_schedules
+    SELECT EXISTS(SELECT 1 FROM blocked_schedules WHERE schedule_date = p_date AND (time_slot1 = '0' OR time_slot2 = '0' OR time_slot3 = '0'
+                   OR time_slot4 = '0' OR time_slot5 = '0' OR time_slot6 = '0'
+                   OR time_slot7 = '0' OR time_slot8 = '0' OR time_slot9 = '0')) INTO should_block;
+
+    IF should_block THEN
+        -- Update all time slots based on the result
+        UPDATE blocked_schedules
+        SET
+            time_slot1 = IF(should_block = '0', '1', '0'),
+            time_slot2 = IF(should_block = '0', '1', '0'),
+            time_slot3 = IF(should_block = '0', '1', '0'),
+            time_slot4 = IF(should_block = '0', '1', '0'),
+            time_slot5 = IF(should_block = '0', '1', '0'),
+            time_slot6 = IF(should_block = '0', '1', '0'),
+            time_slot7 = IF(should_block = '0', '1', '0'),
+            time_slot8 = IF(should_block = '0', '1', '0'),
+            time_slot9 = IF(should_block = '0', '1', '0')
+        WHERE schedule_date = p_date;
+    ELSE
+        -- Insert a new row with all time slots set to '1'
+        INSERT INTO blocked_schedules (schedule_date, time_slot1, time_slot2, time_slot3, time_slot4, time_slot5, time_slot6, time_slot7, time_slot8, time_slot9)
+        VALUES (p_date, '1', '1', '1', '1', '1', '1', '1', '1', '1');
+    END IF;
+END
