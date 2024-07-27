@@ -264,7 +264,7 @@ app.get("/timeslotsdashboard", authenticateToken, async (req, res) => {
               a.user_fullname, 
               a.user_phonenum,
               p.name AS package_name, 
-              p.price
+              p.price_inTaka
           FROM 
               time_slot ts
           LEFT JOIN 
