@@ -296,7 +296,7 @@ app.get("/timeslotsdashboard", authenticateToken, async (req, res) => {
           user_fullname: row.user_fullname,
           user_phonenum: row.user_phonenum,
           package_name: row.package_name,
-          price: row.price,
+          price: row.price_inTaka,
           time_slot: row.time_slot,
         });
       }
