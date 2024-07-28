@@ -416,7 +416,7 @@ app.post("/updateappointment", authenticateToken, async (req, res) => {
 
 app.get('/package', authenticateToken, async (req, res) => {
   try {
-    const [rows] = await pool.query('SELECT package_id AS _id, name, price_inTaka, price_inDollar FROM package');
+    const [rows] = await pool.query('SELECT package_id AS _id, name, price_inTaka, price_inDollar,duration FROM package');
     res.status(200).json(rows);
   } catch (error) {
     console.error("Error fetching packages:", error.stack);
