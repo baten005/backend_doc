@@ -316,7 +316,7 @@ app.get("/timeslotsdashboard", authenticateToken, async (req, res) => {
           user_fullname: row.user_fullname,
           user_phonenum: row.user_phonenum,
           package_name: row.package_name,
-          price: row.price,
+          price: row.price_inTaka,
           time_slot: row.time_slot,
         });
       }
@@ -329,61 +329,100 @@ app.get("/timeslotsdashboard", authenticateToken, async (req, res) => {
   }
 });
 
-// Fetch appointments for today
+//fetch today appointment
 app.get("/todayappointments", authenticateToken, async (req, res) => {
   try {
     const today = new Date();
-    const startOfDay = new Date(
-      today.getFullYear(),
-      today.getMonth(),
-      today.getDate()
-    );
-    const endOfDay = new Date(
-      today.getFullYear(),
-      today.getMonth(),
-      today.getDate() + 1
-    );
+    const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+
     const query = `
-          SELECT * FROM appointment
-          WHERE appoint_date >= ? AND appoint_date < ?
-      `;
-    const [rows] = await pool.query(query, [startOfDay, endOfDay]);
-    res.json(rows);
+      SELECT 
+        CAST(
+          (
+            (SELECT COUNT(*) / 2 
+             FROM appointment 
+             JOIN package ON appointment.package_id = package.package_id 
+             WHERE appointment.appoint_date >= ? AND appointment.appoint_date < ? AND package.duration = '1.5')
+            +
+            (SELECT COUNT(*) 
+             FROM appointment 
+             JOIN package ON appointment.package_id = package.package_id 
+             WHERE appointment.appoint_date >= ? AND appointment.appoint_date < ? AND package.duration = '1.0')
+          ) AS UNSIGNED
+        ) AS total_appointments;
+    `;
+
+
+
+    const [rows] = await pool.query(query, [startOfDay, endOfDay, startOfDay, endOfDay]);
+    
+    console.log("Query Result:", rows); // Log the result
+
+    res.json({ totalAppointments: rows[0]?.total_appointments || 0 });
   } catch (error) {
     console.error("Error fetching today's appointments:", error);
     res.status(500).json({ error: "Server error" });
   }
 });
 
-// Fetch monthly statistics
+//fetch monthly
 app.get("/monthlystats", authenticateToken, async (req, res) => {
   try {
     const today = new Date();
     const thisMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
     const thisMonthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 1);
-    const lastMonthStart = new Date(
-      today.getFullYear(),
-      today.getMonth() - 1,
-      1
-    );
+    const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
     const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 1);
-    console.log(thisMonthStart);
+
     const query = `
-          SELECT
-              COUNT(DISTINCT user_phonenum) AS totalUsers,
-              (SELECT COUNT(DISTINCT user_phonenum) FROM appointment WHERE appoint_date >= ? AND appoint_date < ?) AS lastMonthUsers,
-              (SELECT COUNT(*) FROM appointment WHERE appoint_date >= ? AND appoint_date < ?) AS thisMonthReservations,
-              (SELECT COUNT(*) FROM appointment WHERE appoint_date >= ? AND appoint_date < ?) AS lastMonthReservations
-          FROM appointment;
-      `;
+      SELECT
+        COUNT(DISTINCT user_phonenum) AS totalUsers,
+        (SELECT COUNT(DISTINCT user_phonenum) 
+         FROM appointment 
+         WHERE appoint_date >= ? AND appoint_date < ?) AS lastMonthUsers,
+         
+        CAST(
+          (
+            (SELECT COUNT(*) / 2 
+             FROM appointment 
+             JOIN package ON appointment.package_id = package.package_id 
+             WHERE appoint_date >= ? AND appoint_date < ? AND package.duration = '1.5')
+            +
+            (SELECT COUNT(*) 
+             FROM appointment 
+             JOIN package ON appointment.package_id = package.package_id 
+             WHERE appoint_date >= ? AND appoint_date < ? AND package.duration = '1.0')
+          ) AS UNSIGNED
+        ) AS thisMonthReservations,
+
+        CAST(
+          (
+            (SELECT COUNT(*) / 2 
+             FROM appointment 
+             JOIN package ON appointment.package_id = package.package_id 
+             WHERE appoint_date >= ? AND appoint_date < ? AND package.duration = '1.5')
+            +
+            (SELECT COUNT(*) 
+             FROM appointment 
+             JOIN package ON appointment.package_id = package.package_id 
+             WHERE appoint_date >= ? AND appoint_date < ? AND package.duration = '1.0')
+          ) AS UNSIGNED
+        ) AS lastMonthReservations
+      FROM appointment;
+    `;
 
     const [rows] = await pool.query(query, [
       lastMonthStart,
-      lastMonthEnd,
+      lastMonthEnd, // Last month user phone numbers
       thisMonthStart,
-      thisMonthEnd,
+      thisMonthEnd, // This month reservations
+      thisMonthStart,
+      thisMonthEnd, // This month reservations
       lastMonthStart,
-      lastMonthEnd,
+      lastMonthEnd, // Last month reservations
+      lastMonthStart,
+      lastMonthEnd  // Last month reservations
     ]);
 
     res.json(rows);
@@ -392,6 +431,7 @@ app.get("/monthlystats", authenticateToken, async (req, res) => {
     res.status(500).json({ error: "Server error" });
   }
 });
+
 
 app.delete("/cancelappointment/:id", authenticateToken, async (req, res) => {
   const { id } = req.params;
@@ -443,20 +483,24 @@ app.get('/package', authenticateToken, async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   }
 });
-
-
 app.post('/package', authenticateToken, async (req, res) => {
-  const { name, price_inTaka, price_inDollar } = req.body;
+  const { name, price_inTaka, price_inDollar, duration } = req.body;
+
+  // Log the received data
+  console.log('Received data:', { name, price_inTaka, price_inDollar, duration });
+
   try {
     const [result] = await pool.query(
-      'INSERT INTO package (name, price_inTaka, price_inDollar) VALUES (?, ?, ?)',
-      [name, price_inTaka, price_inDollar]
+      'INSERT INTO package (name, price_inTaka, price_inDollar, duration) VALUES (?, ?, ?, ?)',
+      [name, price_inTaka, price_inDollar, duration]
     );
+
     const insertedPackage = {
       _id: result.insertId,
       name,
       price_inTaka,
-      price_inDollar
+      price_inDollar,
+      duration
     };
     res.status(201).json(insertedPackage);
   } catch (error) {
@@ -464,6 +508,8 @@ app.post('/package', authenticateToken, async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   }
 });
+
+
 
 app.delete("/package/:id", authenticateToken, async (req, res) => {
   const { id } = req.params;
@@ -512,7 +558,6 @@ app.get("/timeslots", authenticateToken, async (req, res) => {
     res.status(500).send("Server error");
   }
 });
-
 app.post("/appointment", authenticateToken, async (req, res) => {
   const {
     package_id,
@@ -520,7 +565,7 @@ app.post("/appointment", authenticateToken, async (req, res) => {
     appoint_date,
     user_fullname,
     user_phonenum,
-    slot_id,
+    slot_ids, // Expecting an array of slot IDs
   } = req.body;
 
   if (
@@ -529,37 +574,42 @@ app.post("/appointment", authenticateToken, async (req, res) => {
     !appoint_date ||
     !user_fullname ||
     !user_phonenum ||
-    !slot_id
+    !slot_ids ||
+    !Array.isArray(slot_ids)
   ) {
-    return res.status(400).send("All fields are required");
+    return res.status(400).send("All fields are required and slot_ids should be an array");
   }
 
   try {
-    const [result] = await pool.query(
-      `INSERT INTO appointment (package_id, appoint_type, appoint_date, user_fullname, user_phonenum, slot_id)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [
-        parseInt(package_id),
-        appoint_type,
-        appoint_date,
-        user_fullname,
-        user_phonenum,
-        slot_id,
-      ]
+    const insertPromises = slot_ids.map((slot_id) => 
+      pool.query(
+        `INSERT INTO appointment (package_id, appoint_type, appoint_date, user_fullname, user_phonenum, slot_id)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [
+          parseInt(package_id),
+          appoint_type,
+          appoint_date,
+          user_fullname,
+          user_phonenum,
+          slot_id,
+        ]
+      )
     );
 
-    // Combine the result with the input to send back the newly created appointment
-    const insertedAppointment = {
+    const results = await Promise.all(insertPromises);
+
+    // Combine the results with the input to send back the newly created appointments
+    const insertedAppointments = results.map((result, index) => ({
       appointment_id: result.insertId,
       package_id: parseInt(package_id),
       appoint_type,
       appoint_date,
       user_fullname,
       user_phonenum,
-      slot_id,
-    };
+      slot_id: slot_ids[index],
+    }));
 
-    res.status(201).json(insertedAppointment);
+    res.status(201).json(insertedAppointments);
   } catch (error) {
     console.error("Error creating appointment:", error);
     res.status(500).send("Server error");
