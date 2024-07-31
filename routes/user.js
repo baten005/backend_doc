@@ -47,24 +47,24 @@ router.post('/otp', async (req, res) => {
 });
 
 router.post('/verify-otp', async (req, res) => {
-  res.clearCookie('token', { httpOnly: true, sameSite: 'none', secure: true });
+  //res.clearCookie('token', { httpOnly: true, sameSite: 'none', secure: true });
   try {
     const { phoneNumber1, otp } = req.body;
-    console.log(phoneNumber1, otp);
+    console.log('this',phoneNumber1, otp);
     const [result] = await pool.query('SELECT password FROM users WHERE email = ?', [phoneNumber1]);
     if (result.length === 0) {
       return res.status(404).send('Phone number not found');
     }
 
     const userOtp = result[0].password;
-    
+    console.log(userOtp)
     if (userOtp === otp) {
       const token = generateToken(phoneNumber1);
-      res.cookie('token', token, { httpOnly: true, sameSite: 'none', secure: true});
+      //res.cookie('token', token, { httpOnly: true, sameSite: 'none', secure: true});
       
       res.status(200).json({ token });
     } else {
-      res.status(400).send('Invalid OTP');
+      res.status(400).send('bal hoise');
     }
   } catch (err) {
     console.error(err);
@@ -73,7 +73,8 @@ router.post('/verify-otp', async (req, res) => {
 });
 
 const verifyToken = (req, res, next) => {
-  const token = req.cookies.token;
+  const authHeader = req.headers.authorization;
+  const token = authHeader && authHeader.split(' ')[1];
   console.log('token', token);
   if (!token) {
     return res.status(401).send('Access Denied');

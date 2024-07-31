@@ -86,20 +86,17 @@ app.post("/login", async (req, res) => {
       "SELECT dashboard,promotion FROM admin_permission where admin_id=?",
       [result[0].id]
     );
-    console.log(2);
+    
     const token1 = jwt.sign({ id: user[0].id }, secretKey, {
       expiresIn: "30d",
     });
-    res.cookie("token1", token1, {
-      httpOnly: true,
-      sameSite: "none",
-      secure: true,
-    });
-
+    console.log('token: ',token1);
+    //res.setHeader('Authorization', `Bearer ${token1}`);
     res
       .status(200)
       .json({
         message: "Login successful",
+        authorization: token1,
         permission: permission[0].dashboard == 1 ? "true" : "false",
         permission1: permission[0].promotion == 1 ? "true" : "false",
       });
@@ -109,12 +106,13 @@ app.post("/login", async (req, res) => {
   }
 });
 
+
 app.post("/logout", (req, res) => {
-  res.clearCookie("token1", { httpOnly: true, sameSite: "none", secure: true });
+  //res.clearCookie("token1", { httpOnly: true, sameSite: "none", secure: true });
   res.status(200).json({ message: "Logout successful" });
 });
 
-const authenticateToken = (req, res, next) => {
+/*const authenticateToken = (req, res, next) => {
   const token1 = req.cookies.token1;
   console.log(token1);
 
@@ -131,6 +129,28 @@ const authenticateToken = (req, res, next) => {
         secure: true,
       });
       return res.status(403).json({ message: "Invalid or expired token1" });
+    }
+
+    req.userId = decoded.id;
+    console.log(req.userId);
+
+    next();
+  });
+};
+*/
+const authenticateToken = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  const token1 = authHeader && authHeader.split(' ')[1];
+  console.log(token1);
+
+  if (!token1) {
+    return res.status(401).json({ message: "Access denied" });
+  }
+
+  jwt.verify(token1, secretKey, (err, decoded) => {
+    if (err) {
+      console.log("Token verification error:", err.message);
+      return res.status(403).json({ message: "Invalid or expired token" });
     }
 
     req.userId = decoded.id;
