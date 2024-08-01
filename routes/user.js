@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { pool } = require('../db/db'); // Import the pool directly
+const { pool } = require('../db/db'); 
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const { sendSingleSms } = require('./sms');

@@ -14,11 +14,11 @@ const app = express();
 const port = 3003;
 const secretKey = crypto.randomBytes(32).toString("hex");
 const {
-  scheduleAppointmentReminders,
+  scheduleAppointmentReminders
 } = require("./routes/appointmentReminderScheduler");
 
 const https = require("https");
-console.log(__dirname);
+
 /*const privateKeyPath = path.join(__dirname, 'backend.hurairaconsultancy.com', 'privkey.pem');
 const certificatePath = path.join(__dirname, 'backend.hurairaconsultancy.com', 'cert.pem');
 const caPath = path.join(__dirname, 'backend.hurairaconsultancy.com', 'chain.pem');
@@ -65,20 +65,20 @@ app.use(blockScheduleRouter);
 
 app.post("/login", async (req, res) => {
   const { username, password } = req.body;
-  console.log(username, password);
+  
   try {
     const [result] = await pool.query(
       "SELECT * FROM admin WHERE username = ?",
       [username]
     );
-    console.log(result);
+   
     if (result.length === 0) {
       return res.status(401).json({ message: "Invalid username or password" });
     }
 
     const user = result;
 
-    console.log(1);
+    
     if (password !== user[0].password) {
       return res.status(401).json({ message: "Invalid username or password" });
     }
@@ -90,7 +90,7 @@ app.post("/login", async (req, res) => {
     const token1 = jwt.sign({ id: user[0].id }, secretKey, {
       expiresIn: "30d",
     });
-    console.log('token: ',token1);
+    
     //res.setHeader('Authorization', `Bearer ${token1}`);
     res
       .status(200)
@@ -141,7 +141,7 @@ app.post("/logout", (req, res) => {
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers.authorization;
   const token1 = authHeader && authHeader.split(' ')[1];
-  console.log(token1);
+  
 
   if (!token1) {
     return res.status(401).json({ message: "Access denied" });
@@ -149,12 +149,12 @@ const authenticateToken = (req, res, next) => {
 
   jwt.verify(token1, secretKey, (err, decoded) => {
     if (err) {
-      console.log("Token verification error:", err.message);
+      
       return res.status(403).json({ message: "Invalid or expired token" });
     }
 
     req.userId = decoded.id;
-    console.log(req.userId);
+   
 
     next();
   });
@@ -218,7 +218,7 @@ app.get("/getAdmins", authenticateToken, async (req, res) => {
 app.post("/updateAdminPermission", authenticateToken, async (req, res) => {
   const data = req.body.selectedPermissions;
   const admin_id = req.body.admin;
-  console.log(data);
+  
   const allPermissions = [
     "dashboard",
     "appointment",
@@ -239,7 +239,7 @@ app.post("/updateAdminPermission", authenticateToken, async (req, res) => {
         `UPDATE admin_permission SET ${permission} = ? WHERE admin_id = ?`,
         [value, admin_id]
       );
-      console.log(value);
+      
     }
 
     await pool.query("COMMIT");
@@ -253,7 +253,7 @@ app.post("/updateAdminPermission", authenticateToken, async (req, res) => {
 app.post("/deleteAdmin", authenticateToken, async (req, res) => {
   const { admin } = req.body;
 
-  console.log(admin);
+  
 
   try {
     const result = await pool.query("DELETE FROM public.admin WHERE id=$1;", [
@@ -281,7 +281,8 @@ app.get("/timeslotsdashboard", authenticateToken, async (req, res) => {
               a.appointment_id, 
               a.appoint_type, 
               a.appoint_date, 
-              a.user_fullname, 
+              a.user_fullname,
+              p.duration, 
               a.user_phonenum,
               p.name AS package_name, 
               p.price_inTaka
@@ -318,10 +319,11 @@ app.get("/timeslotsdashboard", authenticateToken, async (req, res) => {
           package_name: row.package_name,
           price: row.price_inTaka,
           time_slot: row.time_slot,
+          duration:row.duration
         });
       }
     });
-    console.log(timeSlots, "hgvftygbhungyft");
+   
     res.json(timeSlots);
   } catch (error) {
     console.error("Error fetching data:", error);
@@ -357,7 +359,7 @@ app.get("/todayappointments", authenticateToken, async (req, res) => {
 
     const [rows] = await pool.query(query, [startOfDay, endOfDay, startOfDay, endOfDay]);
     
-    console.log("Query Result:", rows); // Log the result
+    // Log the result
 
     res.json({ totalAppointments: rows[0]?.total_appointments || 0 });
   } catch (error) {
@@ -451,26 +453,120 @@ app.delete("/cancelappointment/:id", authenticateToken, async (req, res) => {
   }
 });
 
-app.post("/updateappointment", authenticateToken, async (req, res) => {
-  const { date, timeSlot } = req.body;
-  const a_id = req.query.appointment_id;
-  console.log(date, timeSlot, a_id);
 
+const updateQuery = async (req, res, date, ts, appointment,sendRes) => {
+  console.log('koibar hanse',appointment)
   try {
     const [result] = await pool.query(
       "UPDATE appointment SET appoint_date = ?, slot_id = ? WHERE appointment_id = ?",
-      [date, timeSlot, a_id]
+      [date, ts, appointment]
     );
-    if (result.affectedRows > 0) {
+    if(sendRes=='2'){
+      if (result.affectedRows > 0) {
       res.status(200).json("updated");
     } else {
       res.status(404).json({ message: "Appointment not found" });
+    }
+    }
+    
+  } catch (error) {
+    console.error("Error updating appointment:", error);
+    if(sendRes=='2')
+    res.status(500).json({ error: "Internal server error." });
+  }
+};
+const counterAppointId = async (date,ts) => {
+  console.log(date,ts,'counter func');
+  
+  try {
+    const [result] = await pool.query(
+      "SELECT appointment_id FROM appointment WHERE DATE(appoint_date) = ? and slot_id = ?",
+      [date, ts]
+    );
+    console.log(result,'sama lagaise')
+    if (result.length > 0) {
+      return result[0].appointment_id;
+    } else {
+      return 10;
+    }
+  } catch (error) {
+    console.error("Error updating appointment:", error);
+    return 0;
+  }
+};
+
+const moment = require('moment-timezone');
+
+const adjustDateForTimezone = (dateString) => {
+  // Convert the date from UTC to your local timezone (e.g., Asia/Dhaka)
+  return moment.tz(dateString, 'Asia/Dhaka').format('YYYY-MM-DD');
+};
+app.post("/updateappointment", authenticateToken, async (req, res) => {
+  const { date, time_Slot } = req.body;
+  const a_id = req.query.appointment_id;
+  console.log(date, time_Slot, a_id);
+  const timeSlot1=time_Slot.split('')[0];
+  const timeSlot = Number(timeSlot1);
+  console.log(timeSlot)
+  try {
+    const [type] = await pool.query(
+      `SELECT duration, slot_id, DATE(appoint_date) as appoint_date 
+       FROM appointment 
+       INNER JOIN package ON package.package_id = appointment.package_id 
+       WHERE appointment_id = ?`,
+      [a_id]
+    );
+    const localAppointDate = adjustDateForTimezone(type[0].appoint_date);
+ console.log(type,localAppointDate,'this is the type');   
+    if (type[0].duration == '1.5') {
+      if (type[0].slot_id == '1') {
+        const counter=await counterAppointId(localAppointDate,'2');
+        console.log(counter,'counter')
+        await updateQuery(req, res, date, timeSlot, a_id,'1');
+        await updateQuery(req, res, date, timeSlot+1, counter,'2');
+      }else if (type[0].slot_id == '3') {
+        const counter=await counterAppointId(localAppointDate,'4');
+        await updateQuery(req, res, date, timeSlot, a_id,'1');
+        await updateQuery(req, res, date, timeSlot+1, counter,'2');
+      }else if (type[0].slot_id == '5') {
+        const counter=await counterAppointId(localAppointDate,'6');
+        await updateQuery(req, res, date, timeSlot, a_id,'1');
+        await updateQuery(req, res, date, timeSlot+1, counter,'2');
+      }
+      else if (type[0].slot_id == '8') {
+        const counter=await counterAppointId(localAppointDate,'9');
+        await updateQuery(req, res, date, timeSlot, a_id,'1');
+        await updateQuery(req, res, date, timeSlot+1, counter,'2');
+      }
+      else if (type[0].slot_id == '2') {
+        const counter=await counterAppointId(localAppointDate,'1');
+        await updateQuery(req, res, date, timeSlot, a_id,'1');
+        await updateQuery(req, res, date, timeSlot+1, counter,'2');
+      }
+      else if (type[0].slot_id == '4') {
+        const counter=await counterAppointId(localAppointDate,'3');
+        await updateQuery(req, res, date, timeSlot, a_id,'1');
+        await updateQuery(req, res, date, timeSlot+1, counter,'2');
+      }
+      else if (type[0].slot_id == '6') {
+        const counter=await counterAppointId(localAppointDate,'5');
+        await updateQuery(req, res, date, timeSlot, a_id,'1');
+        await updateQuery(req, res, date, timeSlot+1, counter,'2');
+      }
+      else if (type[0].slot_id == '9') {
+        const counter=await counterAppointId(localAppointDate,'8');
+        await updateQuery(req, res, date, timeSlot, a_id,'1');
+        await updateQuery(req, res, date, timeSlot+1, counter,'2');
+      }
+    } else {
+      await updateQuery(req, res, date, timeSlot, a_id,'2');
     }
   } catch (error) {
     console.error("Error updating appointment:", error);
     res.status(500).json({ error: "Internal server error." });
   }
 });
+
 
 //--------------------------package--------------------
 
@@ -487,7 +583,7 @@ app.post('/package', authenticateToken, async (req, res) => {
   const { name, price_inTaka, price_inDollar, duration } = req.body;
 
   // Log the received data
-  console.log('Received data:', { name, price_inTaka, price_inDollar, duration });
+  
 
   try {
     const [result] = await pool.query(
@@ -526,7 +622,7 @@ app.delete("/package/:id", authenticateToken, async (req, res) => {
 
 app.get("/timeslots", authenticateToken, async (req, res) => {
   const { date } = req.query;
-  console.log(date)
+ 
   if (!date) {
     return res.status(400).send("Date is required");
   }
@@ -551,7 +647,7 @@ app.get("/timeslots", authenticateToken, async (req, res) => {
           ))`,
       [date, date]
     );
-  console.log(result)
+  
     res.json(result);
   } catch (error) {
     console.error("Error fetching time slots:", error);
@@ -559,13 +655,14 @@ app.get("/timeslots", authenticateToken, async (req, res) => {
   }
 });
 app.post("/appointment", authenticateToken, async (req, res) => {
+ 
   const {
     package_id,
     appoint_type,
     appoint_date,
     user_fullname,
     user_phonenum,
-    slot_ids, // Expecting an array of slot IDs
+    slot_id, // Expecting an array of slot IDs
   } = req.body;
 
   if (
@@ -574,14 +671,14 @@ app.post("/appointment", authenticateToken, async (req, res) => {
     !appoint_date ||
     !user_fullname ||
     !user_phonenum ||
-    !slot_ids ||
-    !Array.isArray(slot_ids)
+    !slot_id
   ) {
     return res.status(400).send("All fields are required and slot_ids should be an array");
   }
+  const slot = slot_id.split('');
 
   try {
-    const insertPromises = slot_ids.map((slot_id) => 
+    const insertPromises = slot.map((slot_id) => 
       pool.query(
         `INSERT INTO appointment (package_id, appoint_type, appoint_date, user_fullname, user_phonenum, slot_id)
          VALUES (?, ?, ?, ?, ?, ?)`,
@@ -606,7 +703,7 @@ app.post("/appointment", authenticateToken, async (req, res) => {
       appoint_date,
       user_fullname,
       user_phonenum,
-      slot_id: slot_ids[index],
+      slot_id: slot_id[index],
     }));
 
     res.status(201).json(insertedAppointments);
@@ -684,7 +781,7 @@ app.get("/getAllAppointment", async (req, res) => {
     const [result] = await pool.query(
       `SELECT user_fullname, user_phonenum FROM appointment ORDER BY appointment_id ASC`
     );
-    console.log(result);
+    
     res.json(result);
   } catch (error) {
     console.error("Error fetching appointments:", error);
@@ -696,12 +793,12 @@ app.get("/getAllAppoinment", async (req, res) => {
   const [result] =
     await pool.query(`SELECT user_fullname,user_phonenum FROM appointment
 ORDER BY appointment_id ASC`);
-  console.log(result);
+  
   res.json(result);
 });
 app.post("/getAllNumbers", async (req, res) => {
   const { fromDate, toDate } = req.body;
-  console.log(fromDate, toDate);
+  
 
   try {
     const [result] = await pool.query(
@@ -710,7 +807,7 @@ app.post("/getAllNumbers", async (req, res) => {
        WHERE appoint_date BETWEEN ? AND ?`,
       [fromDate, toDate]
     );
-    console.log(result);
+    
     res.json(result);
   } catch (error) {
     console.error("Error fetching appointments:", error);
@@ -778,6 +875,8 @@ app.listen(port, () => {
   scheduleAppointmentReminders();
   console.log(`Server running on port ${port}`);
 });
-/*https.createServer(credentials, app).listen(port, () => {
+/*
+https.createServer(credentials, app).listen(port, () => {
   console.log(`Server running on port ${port}`);
-});*/
+});
+*/
